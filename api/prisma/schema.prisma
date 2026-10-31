@@ -1,0 +1,279 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TESORERO
+  CONSULTA
+}
+
+enum StudentStatus {
+  ACTIVO
+  INACTIVO
+  EGRESADO
+}
+
+enum GuardianRelation {
+  PADRE
+  MADRE
+  TUTOR
+  OTRO
+}
+
+enum ConceptType {
+  CUOTA_SOCIAL
+  MATRICULA
+  ACTIVIDAD
+  VIAJE
+  OTRO
+}
+
+enum FeeStatus {
+  PENDIENTE
+  PARCIAL
+  PAGA
+  ANULADA
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  TRANSFERENCIA
+  TARJETA
+  MERCADO_PAGO
+  CHEQUE
+}
+
+enum PaymentStatus {
+  ACTIVO
+  ANULADO
+}
+
+enum ExpenseStatus {
+  ACTIVO
+  ANULADO
+}
+
+enum CashSessionStatus {
+  ABIERTA
+  CERRADA
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  name         String   @db.VarChar(120)
+  email        String   @unique @db.VarChar(180)
+  passwordHash String   @db.VarChar(255)
+  role         Role     @default(CONSULTA)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  paymentsCreated   Payment[]     @relation("PaymentCreatedBy")
+  paymentsCancelled Payment[]     @relation("PaymentCancelledBy")
+  expensesCreated   Expense[]     @relation("ExpenseCreatedBy")
+  expensesCancelled Expense[]     @relation("ExpenseCancelledBy")
+  cashOpened        CashSession[] @relation("CashOpenedBy")
+  cashClosed        CashSession[] @relation("CashClosedBy")
+
+  @@index([role])
+}
+
+model Guardian {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  firstName String   @db.VarChar(100)
+  lastName  String   @db.VarChar(100)
+  dni       String   @unique @db.VarChar(20)
+  email     String?  @db.VarChar(180)
+  phone     String?  @db.VarChar(40)
+  address   String?  @db.VarChar(255)
+  notes     String?  @db.Text
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  students StudentGuardian[]
+  payments Payment[]
+
+  @@index([lastName, firstName])
+  @@index([active])
+}
+
+model Student {
+  id        String        @id @default(uuid()) @db.VarChar(36)
+  firstName String        @db.VarChar(100)
+  lastName  String        @db.VarChar(100)
+  dni       String        @unique @db.VarChar(20)
+  birthDate DateTime?     @db.Date
+  course    String        @db.VarChar(20)
+  division  String        @db.VarChar(20)
+  shift     String        @db.VarChar(20)
+  status    StudentStatus @default(ACTIVO)
+  notes     String?       @db.Text
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  guardians StudentGuardian[]
+  fees      Fee[]
+
+  @@index([lastName, firstName])
+  @@index([course, division])
+  @@index([status])
+}
+
+model StudentGuardian {
+  studentId  String           @db.VarChar(36)
+  guardianId String           @db.VarChar(36)
+  relation   GuardianRelation @default(OTRO)
+  isPrimary  Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+
+  student  Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardian Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, guardianId])
+  @@index([guardianId])
+}
+
+model Concept {
+  id            String      @id @default(uuid()) @db.VarChar(36)
+  name          String      @db.VarChar(120)
+  type          ConceptType @default(OTRO)
+  defaultAmount Decimal     @db.Decimal(12, 2)
+  recurring     Boolean     @default(false)
+  description   String?     @db.Text
+  active        Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  fees Fee[]
+
+  @@index([active])
+}
+
+model Fee {
+  id         String   @id @default(uuid()) @db.VarChar(36)
+  studentId  String   @db.VarChar(36)
+  conceptId  String   @db.VarChar(36)
+  period     String   @db.VarChar(7)
+  amount     Decimal  @db.Decimal(12, 2)
+  discount   Decimal  @default(0) @db.Decimal(12, 2)
+  surcharge  Decimal  @default(0) @db.Decimal(12, 2)
+  paidAmount Decimal  @default(0) @db.Decimal(12, 2)
+  dueDate    DateTime @db.Date
+  status     FeeStatus @default(PENDIENTE)
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  student     Student             @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  concept     Concept             @relation(fields: [conceptId], references: [id], onDelete: Restrict)
+  allocations PaymentAllocation[]
+
+  @@unique([studentId, conceptId, period])
+  @@index([status])
+  @@index([period])
+  @@index([dueDate])
+}
+
+model Payment {
+  id            String        @id @default(uuid()) @db.VarChar(36)
+  receiptNumber String        @unique @db.VarChar(30)
+  guardianId    String        @db.VarChar(36)
+  date          DateTime      @default(now())
+  method        PaymentMethod
+  total         Decimal       @db.Decimal(12, 2)
+  notes         String?       @db.Text
+  status        PaymentStatus @default(ACTIVO)
+  createdById   String        @db.VarChar(36)
+  cancelledAt   DateTime?
+  cancelledById String?       @db.VarChar(36)
+  cancelReason  String?       @db.Text
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  guardian    Guardian            @relation(fields: [guardianId], references: [id], onDelete: Restrict)
+  createdBy   User                @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy User?               @relation("PaymentCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  allocations PaymentAllocation[]
+
+  @@index([date])
+  @@index([guardianId])
+  @@index([status])
+}
+
+model PaymentAllocation {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  paymentId String   @db.VarChar(36)
+  feeId     String   @db.VarChar(36)
+  amount    Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  fee     Fee     @relation(fields: [feeId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, feeId])
+  @@index([feeId])
+}
+
+model Expense {
+  id            String        @id @default(uuid()) @db.VarChar(36)
+  date          DateTime      @default(now())
+  category      String        @db.VarChar(80)
+  description   String        @db.Text
+  amount        Decimal       @db.Decimal(12, 2)
+  method        PaymentMethod @default(EFECTIVO)
+  reference     String?       @db.VarChar(120)
+  status        ExpenseStatus @default(ACTIVO)
+  createdById   String        @db.VarChar(36)
+  cancelledAt   DateTime?
+  cancelledById String?       @db.VarChar(36)
+  cancelReason  String?       @db.Text
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  createdBy   User  @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy User? @relation("ExpenseCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+
+  @@index([date])
+  @@index([status])
+}
+
+model CashSession {
+  id             String            @id @default(uuid()) @db.VarChar(36)
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+  openingAmount  Decimal           @default(0) @db.Decimal(12, 2)
+  expectedAmount Decimal?          @db.Decimal(12, 2)
+  countedAmount  Decimal?          @db.Decimal(12, 2)
+  difference     Decimal?          @db.Decimal(12, 2)
+  status         CashSessionStatus @default(ABIERTA)
+  notes          String?           @db.Text
+  openedById     String            @db.VarChar(36)
+  closedById     String?           @db.VarChar(36)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  openedBy User  @relation("CashOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  closedBy User? @relation("CashClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([openedAt])
+}
+
+model Setting {
+  key       String   @id @db.VarChar(80)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}
+
+model Sequence {
+  name  String @id @db.VarChar(40)
+  value Int    @default(0)
+}

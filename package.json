@@ -1,0 +1,23 @@
+{
+  "name": "cooperadora",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de gestion de pagos para cooperadora escolar",
+  "workspaces": [
+    "api",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w api\" \"npm run dev -w web\"",
+    "dev:api": "npm run dev -w api",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w api && npm run build -w web",
+    "db:migrate": "npm run db:migrate -w api",
+    "db:seed": "npm run db:seed -w api",
+    "db:studio": "npm run db:studio -w api",
+    "test": "npm run test -w api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
